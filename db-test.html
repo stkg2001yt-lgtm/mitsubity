@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<button id="w">書き込みテスト</button>
+<pre id="log"></pre>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyBDEx6TnK_AbnkrGDUbWXGnu0WBwLku0N8",
+        authDomain: "mitsuty-d9c2a.firebaseapp.com",
+        databaseURL: "https://mitsuty-d9c2a-default-rtdb.firebaseio.com",
+        projectId: "mitsuty-d9c2a",
+        appId: "1:1064899582432:web:8bc4a07f82d0783c793385"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    w.onclick = async () => {
+        try {
+            const ref = db.ref("_debug").push();
+            await ref.set({ ping: Date.now() });
+            log.textContent = "OK: 書けました → /_debug/" + ref.key;
+        } catch (e) {
+            log.textContent = "NG: " + (e && e.message);
+            console.error(e);
+        }
+    };
+</script>
