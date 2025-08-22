@@ -15,7 +15,7 @@ const firebaseConfig = {
     measurementId: "G-PDSY94BEH6",
 };
 
-// ★新キー＆最軽量モデル
+// ★新しいキー & 最軽量モデル
 const GEMINI_API_KEY = "AIzaSyAGoexkxhfISoXZs0ItBYgXC9UGvSm50UM";
 const GEMINI_MODEL_SUMMARY = "gemini-1.5-flash-8b";
 const GEMINI_MODEL_AI = "gemini-1.5-flash-8b";
@@ -23,9 +23,11 @@ const GEMINI_MODEL_AI = "gemini-1.5-flash-8b";
 /* --- オプション/定数 --- */
 const PAGE_SIZE = 100;                     // タイムライン1ページ
 const SUMMARY_INTERVAL_MS = 15 * 60 * 1000;// 要約の自動更新
-const AI_AUTO = false;                     // ★AI住人の自動書き込みはオフ（手動のみ）
+const AI_AUTO = false;                     // ★AIの自動書き込みはオフ
 const BRIGHTY_NAME = "BRIGHTY";
 const BRIGHTY_ANONID = "BRIGHTY";
+// スレID -> そのスレの投稿購読（ref/handler）を保持
+const POST_SUBS = {};
 
 /* --- 状態 --- */
 let db = null;
@@ -35,7 +37,7 @@ const STATE = {
     threads: {},
     filters: { dorm: "", tag: "", text: "", sort: "new" },
     paging: { page: 1, size: PAGE_SIZE },
-    openThreads: {},   // ひらく中のスレIDを保持（再描画で閉じない）
+    openThreads: {},   // 展開中のスレIDを保持（再描画で閉じない）
     _subscribed: false
 };
 
@@ -89,8 +91,11 @@ function boot() {
     setInterval(() => runSummary({ force: false }), SUMMARY_INTERVAL_MS);
 
     // BRIGHTY 手動のみ
-    $("#btnAiNow").on("click", () => brightyTick({ force: true }));
-    // if (AI_AUTO) setInterval(()=> brightyTick(), 5*60*1000); // ← オフ
+    $("#btnAiNow").on("click", () => brightyTick());
+    if (AI_AUTO) { /* 使わない */ }
+
+    // 投稿フォームUX初期化
+    initPostFormUX();
 }
 
 /* --- RTDB 購読 --- */
@@ -122,7 +127,7 @@ function renderRanking() {
                 const el = $(`[data-thread='${t.id}'] .thread-body`);
                 if (el.length && !el.hasClass("active")) {
                     el.addClass("active");
-                    $(`[data-thread='${t.id}'] .toggle-thread`).text("とじる");
+                    $(`[data-thread='${t.id}'] .toggle-thread`).text("閉じる");
                     loadPosts(t.id, el.find(".posts"));
                 }
                 $('html,body').animate({ scrollTop: $(`[data-thread='${t.id}']`).offset().top - 40 }, 200);
@@ -185,10 +190,10 @@ function renderList() {
         const metaInline = $("<span>").addClass("thread-meta-inline truncate").text(`勢い:${t._hot} / 返信:${t.meta?.repliesTotal || 0} / いいね:${t.meta?.likesTotal || 0}`);
 
         const body = $("<div>").addClass("thread-body");
-        const toggle = $("<button>").addClass("ghost toggle-thread").text("ひらく").on("click", () => {
+        const toggle = $("<button>").addClass("ghost toggle-thread").text("展開").on("click", () => {
             body.toggleClass("active");
             const opened = body.hasClass("active");
-            toggle.text(opened ? "とじる" : "ひらく");
+            toggle.text(opened ? "閉じる" : "展開");
             if (opened) {
                 STATE.openThreads[t.id] = true;
                 const postsWrap = body.find(".posts");
@@ -202,37 +207,47 @@ function renderList() {
         // 投稿表示＋返信UI
         const postsWrap = $("<div>").addClass("posts").append($("<div>").addClass("muted").text("読み込み中…"));
 
-        // 返信UI
         const reply = $("<div>").addClass("reply-box");
-        const nm = $("<input>").attr({ type: "text", placeholder: "ななしさん" }).val(localStorage.getItem("displayName") || "");
-        const ta = $("<textarea>").attr({ rows: 3, placeholder: "内容" });
+        const nm = $("<input>").attr({ type: "text", placeholder: "表示名（任意）" }).val(localStorage.getItem("displayName") || "");
+        const ta = $("<textarea>").attr({ rows: 3, placeholder: "返信内容" });
         const file = $("<input>").attr({ type: "file", accept: "image/*" });
-        const send = $("<button>").addClass("primary").text("返信").on("click", async () => {
-            const name = nm.val().trim(); if (name) { localStorage.setItem("displayName", name); STATE.displayName = name; }
-            const content = ta.val().trim(); if (!content && !file[0].files.length) { alert("本文か画像のどちらかは必要です"); return; }
-            let img = null; if (file[0].files.length) img = await fileToDataURL(file[0].files[0], 1280);
-            await addReply(t.id, { author: { anonId: STATE.anonId, name: name || null }, content, image: img, createdAt: Date.now() });
-            ta.val(""); file.val("");
-        });
 
-        // スタンプ（ワンタップ返信）
-        const stamps = ["👍", "😂", "🎉", "🙏", "🍜", "🛠️", "📦", "🧹"];
-        const sRow = $("<div>").addClass("stamp-row");
-        stamps.forEach(em => {
-            const b = $("<button>").addClass("stamp-btn").attr("type", "button").text(em).on("click", async (ev) => {
-                ev.preventDefault(); ev.stopPropagation();
-                const name = nm.val().trim(); if (name) { localStorage.setItem("displayName", name); STATE.displayName = name; }
-                await addReply(t.id, { author: { anonId: STATE.anonId, name: name || null }, content: em, stamp: true, stampEmoji: em, createdAt: Date.now() });
+        const send = $("<button>")
+            .addClass("primary")
+            .attr("type", "button")          // ← submit化を防止
+            .text("返信")
+            .on("click", async (e) => {
+                e.preventDefault();
+                e.stopPropagation();           // ← 展開トグルへ伝播させない
+
+                const name = nm.val().trim();
+                if (name) { localStorage.setItem("displayName", name); STATE.displayName = name; }
+
+                const content = ta.val().trim();
+                if (!content && !file[0].files.length) { alert("本文か画像のどちらかは必要です"); return; }
+
+                let img = null;
+                if (file[0].files.length) img = await fileToDataURL(file[0].files[0], 1280);
+
+                try {
+                    await addReply(t.id, {
+                        author: { anonId: STATE.anonId, name: name || null },
+                        content, image: img, createdAt: Date.now()
+                    });
+                    ta.val(""); file.val("");    // 入力クリア
+                } catch (err) {
+                    console.error("[REPLY ERROR]", err);
+                    alert("返信に失敗: " + (err?.message || err));
+                }
             });
-            sRow.append(b);
-        });
 
-        reply.append(nm, ta, file, $("<div>").addClass("reply-actions").append(send), sRow);
+
+        reply.append(nm, ta, file, $("<div>").addClass("reply-actions").append(send));
         body.append($("<div>").addClass("muted").text("スレッドの投稿"), postsWrap, reply);
 
-        // 再描画時に開き直す（いいね押下で閉じない）
+        // 再描画時に開き直す
         if (STATE.openThreads[t.id]) {
-            body.addClass("active"); toggle.text("とじる");
+            body.addClass("active"); toggle.text("閉じる");
             const pw = body.find(".posts"); if (!pw.data("bound")) { loadPosts(t.id, pw); pw.data("bound", true); }
         }
 
@@ -268,12 +283,8 @@ function postNode(p, tid, key) {
     h.append($("<span>").addClass("muted").css("margin-left", "6px").text(fmt(p.createdAt)));
     n.append(h);
 
-    if (p.stamp === true || p.stampEmoji) {
-        n.append($("<div>").addClass("stamp-bubble").text(p.stampEmoji || p.content || "👍"));
-    } else {
-        if (p.content && String(p.content).length > 0) n.append($("<div>").text(p.content));
-        if (p.image) n.append($("<img>").attr("src", p.image));
-    }
+    if (p.content) n.append($("<div>").text(p.content));
+    if (p.image) n.append($("<img>").attr("src", p.image));
 
     n.append(likeUI(tid, key, p.likesTotal || 0));
     return n;
@@ -342,7 +353,7 @@ function fileToDataURL(file, maxW = 1280) {
 /* --- 投稿/返信 --- */
 async function createThread(e) {
     e.preventDefault();
-    const btn = $("#btnSubmit").prop("disabled", true).text("投稿してるよ");
+    const btn = $("#btnSubmit").prop("disabled", true).text("投稿中…");
     try {
         const name = $("#inputName").val().trim();
         const dorm = $("#inputDorm").val();
@@ -350,7 +361,7 @@ async function createThread(e) {
         const title = $("#inputTitle").val().trim();
         const content = $("#inputContent").val().trim();
         const tag = $("#inputTag").val(); const tags = tag ? [tag] : [];
-        if (!title) throw new Error("タイトルは必須だよ");
+        if (!title) throw new Error("タイトルは必須です");
 
         let imageData = null; const f = $("#inputImage")[0];
         if (f?.files?.length) imageData = await fileToDataURL(f.files[0], 1280);
@@ -369,11 +380,13 @@ async function createThread(e) {
         };
         await db.ref(`threads/${threadId}`).set(data);
 
-        alert("投稿したよ");
+        alert("投稿しました");
         $("#postForm")[0].reset();
+        localStorage.removeItem("draftPost");
+        $("#imgPreview").empty().addClass("hidden");
         $(".view").removeClass("active"); $("#homeView").addClass("active");
     } catch (err) {
-        alert("投稿に失敗したよ: " + (err?.message || err));
+        alert("投稿に失敗: " + (err?.message || err));
     } finally {
         btn.prop("disabled", false).text("投稿する");
     }
@@ -381,29 +394,47 @@ async function createThread(e) {
 
 async function addReply(threadId, post) {
     if (!db) throw new Error("DB未接続");
-    const key = db.ref(`threads/${threadId}/posts`).push().key;
+
     const now = post?.createdAt || Date.now();
 
-    const snap = await db.ref(`threads/${threadId}/posts`).get();
-    const replies = (snap.exists() ? snap.numChildren() : 0) + 1;
+    // 1) 返信をもっとも確実な push().set() で追加
+    const postRef = db.ref(`threads/${threadId}/posts`).push();
+    await postRef.set({ ...post, likesTotal: 0, createdAt: now });
 
-    const up = {};
-    up[`threads/${threadId}/posts/${key}`] = { ...post, likesTotal: post?.likesTotal || 0 };
-    up[`threads/${threadId}/updatedAt`] = now;
-    up[`threads/${threadId}/meta/repliesTotal`] = replies;
-    await db.ref().update(up);
+    // 2) スレの更新時刻を個別更新
+    await db.ref(`threads/${threadId}/updatedAt`).set(now);
 
-    if (post?.stamp) { await db.ref(`threads/${threadId}/meta/stampsTotal`).transaction(c => (c || 0) + 1); }
+    // 3) 返信数はトランザクションで +1（同時書き込みでも正確）
+    await db.ref(`threads/${threadId}/meta/repliesTotal`).transaction(v => (v || 0) + 1);
+
+    // 4) 楽観的UI：購読の帰りを待たずに即時で1件表示しておく
+    const $posts = $(`[data-thread='${threadId}'] .posts`);
+    if ($posts.length) {
+        $posts.append(postNode({ ...post, likesTotal: 0, createdAt: now }, threadId, postRef.key));
+    }
 }
 
+
 function loadPosts(threadId, container) {
-    db.ref(`threads/${threadId}/posts`).orderByChild("createdAt").limitToLast(100).on("value", (s) => {
-        const arr = []; s.forEach(ch => arr.push({ key: ch.key, ...ch.val() }));
+    // 旧購読を解除（同じ ref + handler を指定する必要がある）
+    const prev = POST_SUBS[threadId];
+    if (prev) prev.ref.off("value", prev.handler);
+
+    const ref = db.ref(`threads/${threadId}/posts`)
+        .orderByChild("createdAt").limitToLast(100);
+
+    const handler = (s) => {
+        const arr = [];
+        s.forEach(ch => arr.push({ key: ch.key, ...ch.val() }));
         arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
         container.empty();
         arr.forEach(p => container.append(postNode(p, threadId, p.key)));
-    });
+    };
+
+    ref.on("value", handler);
+    POST_SUBS[threadId] = { ref, handler };   // ← 現在の購読を記録
 }
+
 
 /* --- Gemini（要約 & BRIGHTYの文生成） --- */
 async function callGeminiText(prompt, model) {
@@ -418,7 +449,7 @@ async function callGeminiText(prompt, model) {
 
 function buildSummaryPrompt(items) {
     const lines = items.map(x => `• [${x.dorm || "-"}](${x.type}) ${x.title || "（無題）"} / ${(x.tags || []).join("/") || "no-tags"} / ${fmt(x.createdAt)}\n  ${(x.content || "").slice(0, 140)}`).join("\n");
-    return `あなたは寮掲示板の管理人AI「BRIGHTY」。超フレンドリーに簡潔に要約。\n${lines}`;
+    return `あなたは寮掲示板の管理人AI「BRIGHTY」。簡潔に要約。\n${lines}`;
 }
 function localSummary(items) {
     const top = items.slice(0, 7).map(x => `・${x.title || "（無題）"} @${x.dorm || "-"}`).join("\n");
@@ -447,31 +478,29 @@ function maybeStatus(msg) {
 async function runSummary({ force = false } = {}) {
     try {
         const recent = await getRecentForSummary(20);
-        if (!recent.length) { $("#summaryContent").text("まだ投稿がないよ。"); return; }
+        if (!recent.length) { $("#summaryContent").text("まだ投稿がありません。"); return; }
         const key = JSON.stringify(recent.map(x => [x.dorm, x.type, x.title, x.createdAt]));
         const now = Date.now();
-        if (!force && key === LAST_SUMMARY_KEY && (now - LAST_SUMMARY_AT) < (10 * 60 * 1000)) { maybeStatus("変更"); return; }
+        if (!force && key === LAST_SUMMARY_KEY && (now - LAST_SUMMARY_AT) < (10 * 60 * 1000)) { maybeStatus("変更なし"); return; }
         maybeStatus("要約中…");
         const text = (await callGeminiText(buildSummaryPrompt(recent), GEMINI_MODEL_SUMMARY)) || localSummary(recent);
         $("#summaryContent").text(text);
         LAST_SUMMARY_KEY = key; LAST_SUMMARY_AT = now; maybeStatus("更新済み");
     } catch {
-        $("#summaryContent").text("要約でエラーが発生しちゃった。。");
+        $("#summaryContent").text("要約でエラーが発生しました。");
     }
 }
 
-/* --- BRIGHTY（手動トリガ用） --- */
+/* --- BRIGHTY（手動トリガ） --- */
 async function brightyTick() {
-    // 返信寄りで自然に一言
     const rows = Object.entries(STATE.threads || {}).map(([id, t]) => ({ id, ...t })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     if (!rows.length) return brightyCreate();
 
-    // 直近スレから文脈を拾って一言返信
     const pick = rows[Math.floor(Math.random() * Math.min(5, rows.length))];
     const pSnap = await db.ref(`threads/${pick.id}/posts`).orderByChild("createdAt").limitToLast(5).get();
     const posts = Object.values(pSnap.val() || {}).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const ctx = posts.map(p => `- ${p.author?.name || ("ID:" + String(p.author?.anonId || "").slice(0, 6))}: ${(p.content || "").replace(/\s+/g, " ").slice(0, 120)}`).join("\n");
-    const prompt = `あなたは寮掲示板の管理人AI「BRIGHTY」。気さくで饒舌、しかし簡潔に。超フレンドリーに直近の発言に1～2文で自然に返信してください。出力は本文のみ。\nスレ:${pick.title}\n${ctx || "(本文なし)"}`;
+    const prompt = `あなたは寮掲示板の管理人AI「BRIGHTY」。気さくで饒舌、しかし簡潔に。直近の発言に1～2文で自然に返信してください。出力は本文のみ。\nスレ:${pick.title}\n${ctx || "(本文なし)"}`;
     const text = (await callGeminiText(prompt, GEMINI_MODEL_AI)) || "ナイスです。具体的な条件や時間帯があれば、ここで擦り合わせましょう。";
     await addReply(pick.id, { author: { anonId: BRIGHTY_ANONID, name: BRIGHTY_NAME }, content: text, createdAt: Date.now() });
 }
@@ -489,4 +518,57 @@ async function brightyCreate() {
         posts: { [first]: { author: { anonId: BRIGHTY_ANONID, name: BRIGHTY_NAME }, content: c, image: null, createdAt: now, likesTotal: 0 } }
     };
     await db.ref(`threads/${tid}`).set(data);
+}
+
+/* --- 投稿フォーム UX 強化 --- */
+function initPostFormUX() {
+    // 文字数カウンタ
+    const setCount = (id, max) => { const v = $(`#${id}`).val() || ""; $(`[data-for='${id}']`).text(`${v.length}/${max}`); };
+    $("#inputTitle").on("input", () => setCount("inputTitle", 80)); setCount("inputTitle", 80);
+    $("#inputContent").on("input", () => setCount("inputContent", 2000)); setCount("inputContent", 2000);
+
+    // チップ選択 → select に反映
+    $("#tagChips button").on("click", function () {
+        $("#tagChips button").removeClass("active"); $(this).addClass("active");
+        $("#inputTag").val($(this).data("val") || "");
+    });
+    $("#dormChips button").on("click", function () {
+        $("#dormChips button").removeClass("active"); $(this).addClass("active");
+        $("#inputDorm").val($(this).data("val") || "");
+    });
+
+    // 画像プレビュー
+    $("#inputImage").on("change", function () {
+        const box = $("#imgPreview").empty();
+        const f = this.files && this.files[0];
+        if (!f) { box.addClass("hidden"); return; }
+        const fr = new FileReader();
+        fr.onload = e => {
+            const img = $("<img>").attr("src", e.target.result);
+            const rm = $("<button>").addClass("rm").text("画像を削除").on("click", () => { $("#inputImage").val(""); box.empty().addClass("hidden"); });
+            box.removeClass("hidden").append(img, rm);
+        };
+        fr.readAsDataURL(f);
+    });
+
+    // 自動下書き保存＆復元
+    const KEYS = ["inputName", "inputDorm", "inputType", "inputTitle", "inputContent", "inputTag"];
+    const saveDraft = (function () { let h; return () => { clearTimeout(h); h = setTimeout(() => { const d = {}; KEYS.forEach(k => d[k] = $(`#${k}`).val()); localStorage.setItem("draftPost", JSON.stringify(d)); $("#draftNote").text("下書き保存済み"); }, 400); }; })();
+    KEYS.forEach(k => $(`#${k}`).on("input change", saveDraft));
+    try {
+        const raw = localStorage.getItem("draftPost");
+        if (raw) {
+            const d = JSON.parse(raw);
+            KEYS.forEach(k => { if (d[k] != null) $(`#${k}`).val(d[k]); });
+            if (d.inputTag != null) $(`#tagChips button[data-val='${d.inputTag}']`).addClass("active");
+            if (d.inputDorm != null) $(`#dormChips button[data-val='${d.inputDorm}']`).addClass("active");
+            setCount("inputTitle", 80); setCount("inputContent", 2000);
+        }
+    } catch { }
+    $("#draftNote").text("入力は自動保存されます");
+
+    // Ctrl/⌘ + Enter で送信
+    $("#postForm").on("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); $("#postForm").trigger("submit"); }
+    });
 }
