@@ -4,114 +4,120 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>寮生専用掲示板（デモ）</title>
+    <title>MITSUBITY</title>
+    <meta name="robots" content="noindex,nofollow">
     <link rel="stylesheet" href="style.css" />
-
-<!-- jQuery（integrityなし）-->
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<!-- Firebase compat（global に firebase を生やす）-->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 
-<body>
-    <header class="app-header">
-        <h1>寮生専用掲示板</h1>
-        <div id="userIdBox" class="muted"></div>
+<body class="nch">
+    <header class="site-header">
+        <h1>MITSUBITY</h1>
+        <div class="header-right">
+            <label class="sort-wrap"><span>表示順</span>
+                <select id="sortBy">
+                    <option value="new">新着順</option>
+                    <option value="hot">勢い順</option>
+                    <option value="likes">いいね順</option>
+                    <option value="views">アクセス順</option>
+                </select>
+            </label>
+            <div id="userIdBox" class="muted">ID: …</div>
+        </div>
     </header>
 
-    <nav class="tabs">
-        <button class="tab-btn active" data-target="#homeView">タイムライン</button>
-        <button class="tab-btn" data-target="#postView">投稿する</button>
-    </nav>
-
-    <section id="summaryBox" class="summary-card">
-        <div class="summary-header">
-            <h2>最近の投稿まとめ（自動）</h2>
-            <small class="muted">3分ごとに更新</small>
+    <section class="manager-card card">
+        <div class="mgr-avatar"><img src="brighty.png" alt="BRIGHTY" class="avatar-l" /></div>
+        <div class="mgr-body">
+            <div class="mgr-title">管理人 <strong>BRIGHTY</strong></div>
+            <div class="mgr-actions">
+                <button id="btnSummaryNow" class="ghost">BRIGHTYに要約させる</button>
+                <button id="btnAiNow" class="ghost">BRIGHTYの投稿</button>
+                <small id="summaryStatus" class="muted"></small>
+            </div>
         </div>
-        <div id="summaryContent" class="summary-content">読み込み中…</div>
+    </section>
+
+    <section class="summary card">
+        <div class="summary-header">
+            <img src="brighty.png" class="avatar-s" alt="BRIGHTY">
+            <h2>BRIGHTYの最近のHOT TOPIC</h2>
+        </div>
+        <pre id="summaryContent" class="summary-content">…</pre>
+    </section>
+
+    <section class="ranking card">
+        <h2>勢いランキング</h2>
+        <ol id="rankingList" class="ranking-list"></ol>
+    </section>
+
+    <section class="dorm-tabs">
+        <button class="dorm-tab active" data-dorm="">全て</button>
+        <button class="dorm-tab" data-dorm="神楽坂寮">神楽坂</button>
+        <button class="dorm-tab" data-dorm="木場寮">木場</button>
+        <button class="dorm-tab" data-dorm="高島平寮">高島平</button>
     </section>
 
     <section id="filters" class="filters">
-        <select id="dormFilter">
-            <option value="">全ての寮</option>
-            <option>神楽坂寮</option>
-            <option>高島平寮</option>
-            <option>木場寮</option>
-        </select>
         <select id="tagQuick">
-            <option value="">タグ（クイック）</option>
-            <option>譲ります</option>
-            <option>探しています</option>
-            <option>家具</option>
-            <option>家電</option>
-            <option>書籍</option>
-            <option>日用品</option>
+            <option value="">タグ</option>
             <option>雑談</option>
-            <option>イベント</option>
+            <option>あそび</option>
+            <option>愚痴</option>
+            <option>求/譲</option>
         </select>
-        <input id="textSearch" type="search" placeholder="文字検索（タイトル・本文）" />
+        <input id="textSearch" type="search" placeholder="文字検索" />
+        <button id="btnGoPost" class="go-post primary" type="button" aria-label="新規スレ">＋ 新規投稿</button>
     </section>
 
     <main id="homeView" class="view active">
-        <div id="threadList" class="thread-list"></div>
-        <div class="to-post">
-            <button class="primary go-post">＋ 投稿画面を開く</button>
-        </div>
+        <section id="threadList"></section>
+        <nav id="pager" class="pager"></nav>
     </main>
 
     <main id="postView" class="view">
-        <form id="postForm" class="card">
+        <section class="card">
             <h2>新規スレッドを作成</h2>
-
-            <label>表示名（任意。未入力なら匿名ID表示）
-                <input id="inputName" type="text" maxlength="24" placeholder="例）So" />
-            </label>
-
-            <label>寮
-                <select id="inputDorm" required>
-                    <option value="">選択してください</option>
-                    <option>神楽坂寮</option>
-                    <option>高島平寮</option>
-                    <option>木場寮</option>
-                </select>
-            </label>
-
-            <label>カテゴリ
-                <select id="inputType" required>
-                    <option value="free">譲ります / 探しています（ジモティー風）</option>
-                    <option value="chat">雑談</option>
-                </select>
-            </label>
-
-            <label>タイトル（譲ります系は必須・雑談は空でもOK）
-                <input id="inputTitle" type="text" maxlength="80" placeholder="例）炊飯器 3合 未使用に近い" />
-            </label>
-
-            <label>本文（値段や詳細はこちらに）
-                <textarea id="inputContent" rows="5" maxlength="2000" placeholder="状態、受け渡し方法、希望価格など自由に。"></textarea>
-            </label>
-
-            <label>タグ（カンマ区切り）
-                <input id="inputTags" type="text" placeholder="例）譲ります, 家電, 炊飯器" />
-            </label>
-
-            <label>画像（任意・1枚）
-                <input id="inputImage" type="file" accept="image/*" />
-            </label>
-
-            <div class="form-actions">
-                <button type="submit" class="primary">投稿する</button>
-                <button type="button" class="ghost back-home">やめる</button>
-            </div>
-        </form>
+            <form id="postForm">
+                <label>なまえ<input id="inputName" type="text" maxlength="32" placeholder="例）So"></label>
+                <label>寮
+                    <select id="inputDorm">
+                        <option value="">選ばない</option>
+                        <option>神楽坂寮</option>
+                        <option>高島平寮</option>
+                        <option>木場寮</option>
+                    </select>
+                </label>
+                <label>カテゴリ
+                    <select id="inputType">
+                        <option value="chat">雑談</option>
+                        <option value="free">譲 / 求</option>
+                    </select>
+                </label>
+                <label>お題（これだけ必須！）<input id="inputTitle" type="text" maxlength="80" required
+                        placeholder="例）炊飯器 3合 ほしい。" /></label>
+                <label>本文<textarea id="inputContent" rows="5" maxlength="2000"
+                        placeholder="自由に書いてね。"></textarea></label>
+                <label>タグ<select id="inputTag">
+                        <option value="">選ばない</option>
+                        <option>雑談</option>
+                        <option>あそび</option>
+                        <option>ごはん</option>
+                        <option>求/譲</option>
+                    </select></label>
+                <label>画像<input id="inputImage" type="file" accept="image/*" /></label>
+                <div class="form-actions">
+                    <button id="btnSubmit" type="submit" class="primary">投稿する</button>
+                    <button type="button" class="back-home ghost">タイムラインへ</button>
+                </div>
+            </form>
+        </section>
     </main>
 
-    <footer class="app-footer">
-        <small class="muted">デモ版 / セキュリティ最小設定</small>
-    </footer>
+    <footer class="footer muted">© MITSUBISHIの掲示板MITSUBITY</footer>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script src="app.js"></script>
 </body>
 
