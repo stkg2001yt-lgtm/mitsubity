@@ -224,7 +224,7 @@ function renderList() {
                 if (name) { localStorage.setItem("displayName", name); STATE.displayName = name; }
 
                 const content = ta.val().trim();
-                if (!content && !file[0].files.length) { alert("本文か画像のどちらかは必要です"); return; }
+                if (!content && !file[0].files.length) { alert("本文か画像のどちらかは必要だよ"); return; }
 
                 let img = null;
                 if (file[0].files.length) img = await fileToDataURL(file[0].files[0], 1280);
@@ -449,7 +449,7 @@ async function callGeminiText(prompt, model) {
 
 function buildSummaryPrompt(items) {
     const lines = items.map(x => `• [${x.dorm || "-"}](${x.type}) ${x.title || "（無題）"} / ${(x.tags || []).join("/") || "no-tags"} / ${fmt(x.createdAt)}\n  ${(x.content || "").slice(0, 140)}`).join("\n");
-    return `あなたは寮掲示板の管理人AI「BRIGHTY」。簡潔に要約。\n${lines}`;
+    return `あなたは寮掲示板の管理人AI「BRIGHTY」。超フレンドリーに寮ごとに簡潔に要約。\n${lines}`;
 }
 function localSummary(items) {
     const top = items.slice(0, 7).map(x => `・${x.title || "（無題）"} @${x.dorm || "-"}`).join("\n");
@@ -500,7 +500,7 @@ async function brightyTick() {
     const pSnap = await db.ref(`threads/${pick.id}/posts`).orderByChild("createdAt").limitToLast(5).get();
     const posts = Object.values(pSnap.val() || {}).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const ctx = posts.map(p => `- ${p.author?.name || ("ID:" + String(p.author?.anonId || "").slice(0, 6))}: ${(p.content || "").replace(/\s+/g, " ").slice(0, 120)}`).join("\n");
-    const prompt = `あなたは寮掲示板の管理人AI「BRIGHTY」。気さくで饒舌、しかし簡潔に。直近の発言に1～2文で自然に返信してください。出力は本文のみ。\nスレ:${pick.title}\n${ctx || "(本文なし)"}`;
+    const prompt = `あなたは寮掲示板の管理人AI「BRIGHTY」。気さくで饒舌、しかし簡潔に。超フレンドリーに直近の発言に1～2文で自然に返信してください。出力は本文のみ。\nスレ:${pick.title}\n${ctx || "(本文なし)"}`;
     const text = (await callGeminiText(prompt, GEMINI_MODEL_AI)) || "ナイスです。具体的な条件や時間帯があれば、ここで擦り合わせましょう。";
     await addReply(pick.id, { author: { anonId: BRIGHTY_ANONID, name: BRIGHTY_NAME }, content: text, createdAt: Date.now() });
 }
@@ -572,3 +572,4 @@ function initPostFormUX() {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); $("#postForm").trigger("submit"); }
     });
 }
+
