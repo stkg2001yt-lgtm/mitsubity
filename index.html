@@ -4,14 +4,14 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>MITSUBITY</title>
+    <title>寮生専用掲示板（BRIGHTY 管理）</title>
     <meta name="robots" content="noindex,nofollow">
     <link rel="stylesheet" href="style.css" />
 </head>
 
 <body class="nch">
     <header class="site-header">
-        <h1>MITSUBITY</h1>
+        <h1>寮生専用掲示板</h1>
         <div class="header-right">
             <label class="sort-wrap"><span>表示順</span>
                 <select id="sortBy">
@@ -21,35 +21,40 @@
                     <option value="views">アクセス順</option>
                 </select>
             </label>
-            <div id="userIdBox" class="muted">ID: …</div>
+            <div id="userIdBox" class="muted">あなたのID: …</div>
         </div>
     </header>
 
+    <!-- BRIGHTY の案内 -->
     <section class="manager-card card">
         <div class="mgr-avatar"><img src="brighty.png" alt="BRIGHTY" class="avatar-l" /></div>
         <div class="mgr-body">
             <div class="mgr-title">管理人 <strong>BRIGHTY</strong></div>
+            <p class="mgr-desc">気さくで饒舌な掲示板の住人AI。要約は自動更新、<strong>書き込みは手動トリガのみ</strong>です。</p>
             <div class="mgr-actions">
-                <button id="btnSummaryNow" class="ghost">BRIGHTYに要約させる</button>
-                <button id="btnAiNow" class="ghost">BRIGHTYの投稿</button>
+                <button id="btnSummaryNow" class="ghost">要約を更新</button>
+                <button id="btnAiNow" class="ghost">BRIGHTYに今すぐ書き込ませる</button>
                 <small id="summaryStatus" class="muted"></small>
             </div>
         </div>
     </section>
 
+    <!-- 要約 -->
     <section class="summary card">
         <div class="summary-header">
             <img src="brighty.png" class="avatar-s" alt="BRIGHTY">
-            <h2>BRIGHTYの最近のHOT TOPIC</h2>
+            <h2>BRIGHTYの最近の投稿まとめ</h2>
         </div>
-        <pre id="summaryContent" class="summary-content">…</pre>
+        <pre id="summaryContent" class="summary-content">要約を準備中…</pre>
     </section>
 
+    <!-- ランキング -->
     <section class="ranking card">
         <h2>勢いランキング</h2>
         <ol id="rankingList" class="ranking-list"></ol>
     </section>
 
+    <!-- 寮タブ -->
     <section class="dorm-tabs">
         <button class="dorm-tab active" data-dorm="">全て</button>
         <button class="dorm-tab" data-dorm="神楽坂寮">神楽坂</button>
@@ -57,64 +62,114 @@
         <button class="dorm-tab" data-dorm="高島平寮">高島平</button>
     </section>
 
+    <!-- フィルタ -->
     <section id="filters" class="filters">
         <select id="tagQuick">
-            <option value="">タグ</option>
+            <option value="">タグ（クイック）</option>
             <option>雑談</option>
             <option>あそび</option>
             <option>愚痴</option>
             <option>求/譲</option>
         </select>
-        <input id="textSearch" type="search" placeholder="文字検索" />
-        <button id="btnGoPost" class="go-post primary" type="button" aria-label="新規スレ">＋ 新規投稿</button>
+        <input id="textSearch" type="search" placeholder="文字検索（タイトル・本文）" />
+        <!-- 固定の新規投稿ボタン -->
+        <button id="btnGoPost" class="go-post primary" type="button" aria-label="新規投稿を作成">＋ 新規投稿</button>
     </section>
 
+    <!-- タイムライン -->
     <main id="homeView" class="view active">
         <section id="threadList"></section>
         <nav id="pager" class="pager"></nav>
     </main>
 
+    <!-- 新規投稿 -->
     <main id="postView" class="view">
-        <section class="card">
-            <h2>新規スレッドを作成</h2>
-            <form id="postForm">
-                <label>なまえ<input id="inputName" type="text" maxlength="32" placeholder="例）So"></label>
-                <label>寮
-                    <select id="inputDorm">
-                        <option value="">選ばない</option>
-                        <option>神楽坂寮</option>
-                        <option>高島平寮</option>
-                        <option>木場寮</option>
-                    </select>
-                </label>
-                <label>カテゴリ
-                    <select id="inputType">
-                        <option value="chat">雑談</option>
-                        <option value="free">譲 / 求</option>
-                    </select>
-                </label>
-                <label>お題（これだけ必須！）<input id="inputTitle" type="text" maxlength="80" required
-                        placeholder="例）炊飯器 3合 ほしい。" /></label>
-                <label>本文<textarea id="inputContent" rows="5" maxlength="2000"
-                        placeholder="自由に書いてね。"></textarea></label>
-                <label>タグ<select id="inputTag">
-                        <option value="">選ばない</option>
-                        <option>雑談</option>
-                        <option>あそび</option>
-                        <option>ごはん</option>
-                        <option>求/譲</option>
-                    </select></label>
-                <label>画像<input id="inputImage" type="file" accept="image/*" /></label>
-                <div class="form-actions">
-                    <button id="btnSubmit" type="submit" class="primary">投稿する</button>
-                    <button type="button" class="back-home ghost">タイムラインへ</button>
+        <section class="card post-card">
+            <div class="post-header">
+                <h2>新規スレッドを作成</h2>
+                <small class="muted">※ タイトルのみ必須。他は任意です</small>
+            </div>
+
+            <form id="postForm" autocomplete="on">
+                <div class="form-grid">
+                    <label class="w-2">タイトル（必須）
+                        <input id="inputTitle" type="text" required maxlength="80" placeholder="例）炊飯器 3合 未使用に近い">
+                        <span class="count" data-for="inputTitle">0/80</span>
+                    </label>
+
+                    <label>表示名（任意）
+                        <input id="inputName" type="text" maxlength="32" placeholder="例）So">
+                    </label>
+
+                    <label>寮（任意）
+                        <div class="chip-row" id="dormChips">
+                            <button type="button" data-val="">なし</button>
+                            <button type="button" data-val="神楽坂寮">神楽坂</button>
+                            <button type="button" data-val="木場寮">木場</button>
+                            <button type="button" data-val="高島平寮">高島平</button>
+                        </div>
+                        <select id="inputDorm" class="sr-only">
+                            <option value="">選択しない</option>
+                            <option>神楽坂寮</option>
+                            <option>木場寮</option>
+                            <option>高島平寮</option>
+                        </select>
+                    </label>
+
+                    <label>カテゴリ（任意）
+                        <select id="inputType">
+                            <option value="chat">雑談</option>
+                            <option value="free">譲ります / 探しています</option>
+                        </select>
+                    </label>
+
+                    <label class="w-2">本文（任意）
+                        <div class="editor">
+                            <textarea id="inputContent" rows="6" maxlength="2000"
+                                placeholder="状態、受け渡し、希望価格など自由に。"></textarea>
+                            <div class="toolbar">
+                                <span class="count" data-for="inputContent">0/2000</span>
+                                <div class="spacer"></div>
+                                <span class="hint">Ctrl/⌘ + Enter で投稿</span>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label>タグ（任意）
+                        <div class="chip-row" id="tagChips">
+                            <button type="button" data-val="">なし</button>
+                            <button type="button" data-val="雑談">雑談</button>
+                            <button type="button" data-val="あそび">あそび</button>
+                            <button type="button" data-val="愚痴">愚痴</button>
+                            <button type="button" data-val="求/譲">求/譲</button>
+                        </div>
+                        <select id="inputTag" class="sr-only">
+                            <option value="">選択しない</option>
+                            <option>雑談</option>
+                            <option>あそび</option>
+                            <option>愚痴</option>
+                            <option>求/譲</option>
+                        </select>
+                    </label>
+
+                    <label class="w-2">画像（任意・1枚）
+                        <input id="inputImage" type="file" accept="image/*">
+                        <div id="imgPreview" class="img-preview hidden"></div>
+                    </label>
+                </div>
+
+                <div class="form-actions sticky">
+                    <button id="btnSubmit" class="primary" type="submit">投稿する</button>
+                    <button type="button" class="back-home ghost">タイムラインへ戻る</button>
+                    <span id="draftNote" class="muted">入力は自動保存されます</span>
                 </div>
             </form>
         </section>
     </main>
 
-    <footer class="footer muted">© MITSUBISHIの掲示板MITSUBITY</footer>
+    <footer class="footer muted">© BRIGHTY & 寮生掲示板</footer>
 
+    <!-- libs -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
